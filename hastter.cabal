@@ -1,0 +1,17 @@
+name:          Hastter
+version:       0.1
+cabal-version: >= 1.2
+license:       MIT
+author:        Daniel Cestari
+synopsis:      Twitter Client on Haskell
+build-type:    Simple
+
+source-repository head
+  type: git
+  location: git://github.com/dcestari/hastter.git
+
+executable hastter
+  build-depends:  base, random, Crypto, dataenc, bytestring, split, time, HTTP
+  main-is:        Main.hs
+  hs-source-dirs: src
+
