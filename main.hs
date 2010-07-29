@@ -16,7 +16,11 @@ module Main where
   import qualified System.Random as R
 
   consumerKey = "YOUR CONSUMER KEY HERE"
-  consumerSecret = "YOU CONSUMER SECRET HERE"
+  consumerSecret = "YOUR CONSUMER SECRET HERE"
+
+  data TokenData    = Token { token :: String, secret :: String } deriving (Show, Eq)
+  type AccessToken  = TokenData
+  type RequestToken = TokenData
 
   signRequest httpMethod baseUri params tokenSecret = Base64.encode binary_hash
     where sorted_params = DL.sortBy (\x@(a,_) y@(b,_) -> compare a b) params
@@ -78,6 +82,9 @@ module Main where
     | p == k    = Just v
     | otherwise = extractParam p params
 
+  containsParam _ [] = False
+  containsParam p ((k,v):params) = p == k || containsParam p params
+
   postToTwitter url params oauthParams tokenSecret =
     do ts  <- getUnixTime
        gen  <- R.newStdGen
@@ -89,30 +96,37 @@ module Main where
        body <- getResponseBody rsp
        return body
 
-  getRequestToken :: IO (Maybe String, Maybe String)
+  buildToken :: String -> Maybe TokenData
+  buildToken s =
+      case (a, b) of
+        (Just tokenKey, Just tokenSecret) -> Just $ Token { token = tokenKey, secret = tokenSecret }
+        _ -> Nothing
+    where (a, b) = extractTokens s
+
+  getRequestToken :: IO (Maybe RequestToken)
   getRequestToken = do body <- postToTwitter "http://api.twitter.com/oauth/request_token" [] oauthParams ""
-                       return (extractTokens body)
+                       return (buildToken body)
     where oauth_callback = ("oauth_callback", "oob")
           oauthParams    = [oauth_callback]
 
-  getAccessToken verifier token secret = do body <- postToTwitter "http://api.twitter.com/oauth/access_token" [] oauthParams secret
-                                            return (extractTokens body)
-    where oauth_token    = ("oauth_token", token)
+  getAccessToken verifier requestToken = do body <- postToTwitter "http://api.twitter.com/oauth/access_token" [] oauthParams (secret requestToken)
+                                            return (buildToken body)
+    where oauth_token    = ("oauth_token", (token requestToken))
           oauth_verifier = ("oauth_verifier", verifier)
           oauthParams    = [oauth_token, oauth_verifier] 
 
   main :: IO ()
   main = do requestToken <- getRequestToken
-            let (Just key, Just secret) = requestToken
-            putStrLn $ "Go here: http://api.twitter.com/oauth/authorize?oauth_token=" ++ key
+            let (Just rt) = requestToken
+            putStrLn $ "Go here: http://api.twitter.com/oauth/authorize?oauth_token=" ++ (token rt)
             putStr "Enter PIN: "
             verifier <- getLine
-            accessToken <- getAccessToken verifier key secret
-            let (Just accessTokenKey, Just accessTokenSecret) = accessToken
+            accessToken <- getAccessToken verifier rt
+            let (Just at) = accessToken
             putStr "Status: "
             status <- getLine
             print accessToken
-            b <- postToTwitter "http://api.twitter.com/1/statuses/update.json" [("status", status)] [("oauth_token", accessTokenKey)] accessTokenSecret
+            b <- postToTwitter "http://api.twitter.com/1/statuses/update.json" [("status", status)] [("oauth_token", (token at))] (secret at)
             print b
 
 
